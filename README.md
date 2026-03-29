@@ -22,8 +22,7 @@ A powerful Telegram bot that uploads files up to **2 GB** directly to Telegram f
 | 📝 Custom Captions | Per-user saved captions |
 | 🖼️ Permanent Thumbnails | Stored as Telegram `file_id` — survive restarts & redeployments |
 | ✨ Custom Watermarks | Premium-only: Text or Image overlays on thumbnails, adjustable color/size/opacity |
-| 🎞️ AI Subtitles     | Premium-only: Auto-generate `.srt` or burn into video. Supports NSFW verbatim transcription, multiple engines (stable-ts, WhisperX), and API fallback (Groq/OpenAI) |
-| 🔍 Site Scraper     | Admin-only: Scrape video links from any website and batch upload one by one with thumbnails |
+| 🎞️ AI Subtitles     | Premium-only: Auto-generate `.srt` or burn into video after transcription |
 | 🖼️ One-time Thumbnails| Premium-only: Set a custom thumbnail for a single upload via interactive button |
 | 📊 Live Progress | Real-time progress bars in chat |
 | 🚀 Upload Boost | pyroblack `upload_boost=True` + parallel MTProto connections |
@@ -147,45 +146,26 @@ python bot.py
 /wmsize <num>    – Set size percentage from 1 to 100
 /showwatermark   – View your watermark settings
 /clearwatermark  – Remove watermark
-/setsubs <on/off>    – Toggle AI subtitle generation 📝
-/sublang <lang>      – Set subtitle language (en, ja, auto, etc)
+/setsubs <on/off>– Toggle AI subtitle generation 📝
+/sublang <lang>  – Set subtitle language (en, ja, auto, etc)
 /submethod <local/api> – Switch AI method (Local or API)
-/subengine <stable-ts/whisperx> – Set alignment engine (stable-ts recommended for 4GB RAM)
-/submodel <base/small/medium/large> – Set local AI model size
-/substats          – View current subtitle settings (including active engine)
-/groqmodel <model>  – Set Groq API model (distil-whisper-large-v3-en default)
+/subengine <stable-ts/whisperx> – Set alignment engine (stable-ts is recommended for 4GB RAM)
+/submodel <base/small/distil-large-v3/medium/large-v3> – Set local AI model
+/substats        – View current subtitle settings (including active engine)
 
 ### 🚀 Optimizing for 4GB RAM
 If you are on a 4GB RAM instance:
-1. **Model**: Use `base` or `small` — smaller models use less RAM
-2. **Engine**: Use `stable-ts` (default) — significantly more RAM-efficient than WhisperX
-3. **Method**: Use `api` with Groq — best quality, fastest speed, lowest RAM usage
-4. **Commands**: `/submodel base`, `/subengine stable-ts`, `/submethod api`
-
-### 🔞 NSFW Content Optimization
-The bot includes optimized prompts for accurate NSFW/adult content transcription:
-- Uses detailed verbatim prompts that instruct the model to transcribe all profanity, slang, and explicit content without censorship
-- Groq API uses `distil-whisper-large-v3` for accuracy + speed
-- Local WhisperX upscaled models for better recognition of diverse vocabulary
+1. **Model**: Use `distil-large-v3` — it gives Large-v3 accuracy with a much smaller RAM footprint.
+2. **Engine**: Use `stable-ts` (default) — it is significantly more RAM-efficient than WhisperX.
+3. **Command**: `/submodel distil-large-v3` and `/subengine stable-ts`.
 
 --- Admin only ---
-/broadcast <msg>       – Broadcast to all users 📢
-/total                – Total registered users 👥
-/ban <id>             – Ban a user ⛔
-/unban <id>           – Unban a user ✅
-/premium <id>         – Toggle premium status ⭐
-/statusall            – CPU / RAM / Disk stats 🚀
-
-### 🔍 Site Scraper (Admin Only)
-Scrape and batch upload videos from a SPECIFIC category page:
-
-/scrape <url> [max]   – Scrape category page for videos and upload one by one 📥
-/scrape_stop          – Stop the current scrape job ⏹️
-/scrape_status        – Check scrape progress 📊
-
-Example: `/scrape https://pornhub.com/category/amateur 20`
-
-Note: Only scrapes videos from the provided URL - no pagination or other categories.
+/broadcast <msg> – Broadcast to all users 📢
+/total           – Total registered users 👥
+/ban <id>        – Ban a user ⛔
+/unban <id>      – Unban a user ✅
+/premium <id>    – Toggle premium status ⭐
+/statusall       – CPU / RAM / Disk stats 🚀
 ```
 
 ---
@@ -280,7 +260,6 @@ telelinkworking/
 │       ├── upload.py       # Download & upload logic
 │       ├── extractor.py    # Link extraction orchestration
 │       ├── browser_extractor.py  # Playwright-based extraction
-│       ├── site_scraper.py # Site scraping for batch uploads
 │       └── database.py     # MongoDB operations
 └── utils/
     ├── shared.py          # Shared state
@@ -310,14 +289,6 @@ telelinkworking/
 ### Memory issues?
 
 - The bot cleans the DOWNLOADS folder on startup
-- Use `/submethod api` for zero local model loading
-- Use `/subengine stable-ts` for lower RAM usage than WhisperX
-
-### Audio/Subtitle errors?
-
-- Ensure `libsndfile1` and `libsox3` are installed (included in Dockerfile)
-- FFmpeg is used as audio backend for MP3/M4A handling
-- For NSFW content, use Groq API for best accuracy: `/submethod api`
 
 ---
 
@@ -326,7 +297,4 @@ telelinkworking/
 - [Pyrogram](https://pyrogram.org/) - Telegram MTProto client
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) - Video downloader
 - [Playwright](https://playwright.dev/) - Browser automation
-- [WhisperX](https://github.com/m-bain/WhisperX) - AI transcription with alignment
-- [stable-ts](https://github.com/jianfeng/stable-ts) - Stable timestamps for subtitles
-- [Groq](https://console.groq.com/) - Fast LPU inference API
 - [Koyeb](https://koyeb.com/) - Deployment platform

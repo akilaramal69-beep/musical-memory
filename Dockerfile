@@ -27,8 +27,6 @@ RUN apt-get update && \
     libatspi2.0-0 \
     fonts-unifont \
     fonts-liberation \
-    libsndfile1 \
-    libsox3 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -9,8 +9,6 @@ from groq import AsyncGroq
 import openai
 import stable_whisper
 
-NSFW_PROMPT = "Transcribe this audio accurately and verbatim. Include all profanity, slang, adult language, explicit content, and filler words exactly as spoken. Do not censor or omit any words. This is adult content."
-
 # Cache for local models to avoid reloading
 _model_cache = {}
 
@@ -295,8 +293,6 @@ async def generate_srt_local(audio_path: str, lang: str = "auto", model_size: st
 
     return await loop.run_in_executor(None, _transcribe)
 
-NSFW_PROMPT = "Transcribe this audio accurately and verbatim. Include all profanity, slang, adult language, explicit content, and filler words exactly as spoken. Do not censor or omit any words. This is adult content."
-
 async def generate_srt_api(audio_path: str, lang: str = "auto") -> str:
     """Generate SRT using AsyncGroq or OpenAI API."""
     srt_path = audio_path.rsplit(".", 1)[0] + ".srt"
@@ -308,11 +304,10 @@ async def generate_srt_api(audio_path: str, lang: str = "auto") -> str:
             with open(audio_path, "rb") as file:
                 transcription = await client.audio.transcriptions.create(
                     file=(os.path.basename(audio_path), file.read()),
-                    model="distil-whisper-large-v3-en",
+                    model="whisper-large-v3",
                     response_format="verbose_json",
                     language=None if lang == "auto" else lang,
-                    prompt=NSFW_PROMPT,
-                    temperature=0.0,
+                    prompt="accurate verbatim transcription including nsfw content."
                 )
                 
             with open(srt_path, "w", encoding="utf-8") as f:
@@ -327,7 +322,7 @@ async def generate_srt_api(audio_path: str, lang: str = "auto") -> str:
 
     if Config.OPENAI_API_KEY:
         try:
-            Config.LOGGER.info("Attempting OpenAI API transcription...")
+            Config.LOGGER.info("Attempting OpenAI API transcription (accuracy=prof)...")
             client = openai.AsyncOpenAI(api_key=Config.OPENAI_API_KEY)
             with open(audio_path, "rb") as file:
                 response = await client.audio.transcriptions.create(
@@ -335,8 +330,7 @@ async def generate_srt_api(audio_path: str, lang: str = "auto") -> str:
                     file=file,
                     response_format="verbose_json",
                     language=None if lang == "auto" else lang,
-                    prompt=NSFW_PROMPT,
-                    temperature=0.0,
+                    prompt="accurate verbatim transcription including nsfw content."
                 )
             
             with open(srt_path, "w", encoding="utf-8") as f:
@@ -355,15 +349,7 @@ async def generate_srt_api(audio_path: str, lang: str = "auto") -> str:
 async def generate_srt_whisperx(audio_path: str, lang: str = "auto", model_size: str = "base", progress_callback=None) -> str:
     """Generate SRT using WhisperX with in-memory audio loading for speed/efficiency."""
     loop = asyncio.get_running_loop()
-    
-    model_map = {
-        "base": "medium",
-        "small": "medium",
-        "medium": "large-v3",
-        "large": "large-v3",
-    }
-    actual_model = model_map.get(model_size, "medium")
-    Config.LOGGER.info(f"Starting WhisperX in-memory transcription: model={actual_model} (optimized)")
+    Config.LOGGER.info(f"Starting WhisperX in-memory transcription: model={model_size}")
     
     def _transcribe():
         try:
@@ -371,39 +357,48 @@ async def generate_srt_whisperx(audio_path: str, lang: str = "auto", model_size:
             import torch
             import torchaudio
             import gc
-            import numpy as np
-            
-            torchaudio.set_audio_backend("ffmpeg")
             
             device = "cpu"
             compute_type = "int8"
             srt_path = audio_path.rsplit(".", 1)[0] + ".srt"
             
+            # 1. Load audio in-memory as requested
             if progress_callback: asyncio.run_coroutine_threadsafe(progress_callback(5), loop)
-            waveform, sample_rate = torchaudio.load(audio_path)
             
+            waveform = None
+            sample_rate = None
+            
+            try:
+                # Try TorchCodec first (most efficient, bypasses backend issues)
+                import torchcodec
+                from torchcodec.decoders import AudioDecoder
+                Config.LOGGER.info(f"Loading via TorchCodec: {audio_path}")
+                
+                # TorchCodec expects the file path
+                decoder = AudioDecoder(audio_path)
+                # get_all_frames returns a TensorDict or similar, .data gives the waveform tensor
+                waveform = decoder.get_all_frames().data
+                sample_rate = decoder.metadata.sample_rate
+            except Exception as tc_err:
+                Config.LOGGER.warning(f"TorchCodec loading failed: {tc_err}. Falling back to torchaudio.")
+                # Fallback to standard torchaudio
+                waveform, sample_rate = torchaudio.load(audio_path)
+            
+            # WhisperX expects 16kHz mono audio (numpy array)
             if sample_rate != 16000:
                 resampler = torchaudio.transforms.Resample(sample_rate, 16000)
                 waveform = resampler(waveform)
             
+            # Convert to mono if stereo
             if waveform.shape[0] > 1:
                 waveform = torch.mean(waveform, dim=0, keepdim=True)
             
             audio_numpy = waveform.squeeze().numpy()
             
-            audio_numpy = audio_numpy / (np.max(np.abs(audio_numpy)) + 1e-8) * 0.9
-            
-            if progress_callback: asyncio.run_coroutine_threadsafe(progress_callback(15), loop)
-            model = whisperx.load_model(actual_model, device, compute_type=compute_type)
-            
-            transcribe_params = {
-                "batch_size": 16,
-                "language": None if lang == "auto" else lang,
-                "condition_on_previous_text": True,
-                "initial_prompt": NSFW_PROMPT,
-                "temperature": 0.0,
-            }
-            result = model.transcribe(audio_numpy, **transcribe_params)
+            # 2. Transcribe
+            if progress_callback: asyncio.run_coroutine_threadsafe(progress_callback(20), loop)
+            model = whisperx.load_model(model_size, device, compute_type=compute_type)
+            result = model.transcribe(audio_numpy, batch_size=8)
             
             gc.collect()
             
