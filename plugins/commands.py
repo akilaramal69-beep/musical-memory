@@ -219,6 +219,7 @@ async def _do_upload_logic(
     format_id: str = None,
     custom_thumbnail: str = None,
     media_msg_id: int = None,
+    referer: str = None,
 ):
     status_msg = reply_to
     
@@ -240,7 +241,7 @@ async def _do_upload_logic(
             mime = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
         else:
             Config.LOGGER.info(f"calling download_url for {user_id}")
-            file_path, mime = await download_url(url, filename, status_msg, start_time, user_id, format_id=format_id, cancel_ref=cancel_ref)
+            file_path, mime = await download_url(url, filename, status_msg, start_time, user_id, format_id=format_id, cancel_ref=cancel_ref, referer=referer)
         
         file_size = os.path.getsize(file_path)
 

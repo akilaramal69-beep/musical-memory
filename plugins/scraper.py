@@ -67,23 +67,34 @@ async def run_scraper(client: Client, status_msg: Message, user_id: int, start_u
                 break
             
             video_url = link_data["url"]
-            # To match "normal upload logic", we send a fresh message for each video's progress
-            upload_status = await client.send_message(user_id, f"📥 **Scraper [{i}/{total}]:** Preparing...")
+            upload_status = await client.send_message(user_id, f"📥 **Scraper [{i}/{total}]:** Analyzing...")
             
             try:
-                # Use the EXACT same logic as the normal /upload or link detection
+                # 1. Fetch filename (to avoid TypeError in download_url)
+                from plugins.helper.upload import fetch_ytdlp_title, fetch_http_filename, resolve_url
+                
+                # Resolve original URL for better extraction
+                final_url = await resolve_url(video_url)
+                
+                filename = await fetch_ytdlp_title(final_url)
+                if not filename:
+                    filename = await fetch_http_filename(final_url)
+                if not filename:
+                    # Fallback to a name from link_data if possible
+                    filename = f"video_{i}.mp4"
+
+                # 2. Call the standard logic with the referer fix
                 await _do_upload_logic(
                     client=client,
                     reply_to=upload_status,
                     user_id=user_id,
-                    url=video_url,
-                    filename=None,        # Auto-detect title
+                    url=final_url,
+                    filename=filename,
                     cancel_ref=cancel_ref,
-                    force_document=False, # Default to media
-                    format_id=None,       # Best quality
+                    force_document=False,
+                    format_id=None,
+                    referer=video_url # Use the video page as referer
                 )
-                # Cleanup the per-video status message if it was successful (optional)
-                # await upload_status.delete() 
             except Exception as e:
                 Config.LOGGER.error(f"Scraper error on video {i}: {e}")
                 try: await upload_status.edit_text(f"❌ **Scraper Error {i}/{total}:**\n`{e}`")
