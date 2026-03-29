@@ -22,8 +22,11 @@ def admin_only(func):
     @functools.wraps(func)
     async def wrapper(client: Client, message: Message):
         user_id = message.from_user.id
+        Config.LOGGER.info(f"Admin check: user={user_id}, owner={Config.OWNER_ID}, admin={Config.ADMIN}")
         if user_id != Config.OWNER_ID and user_id not in Config.ADMIN:
+            Config.LOGGER.warning(f"Admin denied for user {user_id}")
             return await message.reply_text("🚫 Admin only command.", quote=True)
+        Config.LOGGER.info(f"Admin access granted for user {user_id}")
         return await func(client, message)
     return wrapper
 
@@ -165,6 +168,7 @@ async def premium_handler(client: Client, message: Message):
 @Client.on_message(filters.command("scrape") & filters.private)
 @admin_only
 async def scrape_handler(client: Client, message: Message):
+    Config.LOGGER.info(f"scrape_handler triggered by user {message.from_user.id}")
     args = message.command
     if len(args) < 2:
         return await message.reply_text(
