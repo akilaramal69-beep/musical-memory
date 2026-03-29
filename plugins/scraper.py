@@ -6,8 +6,9 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 from plugins.config import Config
 from plugins.admin import admin_only
-from plugins.commands import _do_upload_logic
 from playwright.async_api import async_playwright
+
+Config.LOGGER.info("✅ scraper.py module loaded successfully")
 
 # Store active scraper tasks: {user_id: {"stop_event": Event}}
 ACTIVE_SCRAPERS = {}
@@ -84,6 +85,7 @@ async def run_scraper(client: Client, status_msg: Message, user_id: int, start_u
                     filename = f"video_{i}.mp4"
 
                 # 2. Call the standard logic with the referer fix
+                from plugins.commands import _do_upload_logic
                 await _do_upload_logic(
                     client=client,
                     reply_to=upload_status,

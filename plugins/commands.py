@@ -41,7 +41,8 @@ _ALL_COMMANDS = [
     "clearcaption", "setthumb", "showthumb", "delthumb", "setwatermark",
     "wmcolor", "wmopacity", "wmsize", "wmpos", "showwatermark", "clearwatermark",
     "broadcast", "total", "ban", "unban", "premium", "statusall",
-    "setsubs", "sublang", "submethod", "submodel", "substats", "subengine"
+    "setsubs", "sublang", "submethod", "submodel", "substats", "subengine",
+    "scrape", "stop_scrape"
 ]
 
 
