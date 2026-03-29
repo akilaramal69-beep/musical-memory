@@ -23,6 +23,7 @@ A powerful Telegram bot that uploads files up to **2 GB** directly to Telegram f
 | 🖼️ Permanent Thumbnails | Stored as Telegram `file_id` — survive restarts & redeployments |
 | ✨ Custom Watermarks | Premium-only: Text or Image overlays on thumbnails, adjustable color/size/opacity |
 | 🎞️ AI Subtitles     | Premium-only: Auto-generate `.srt` or burn into video. Supports NSFW verbatim transcription, multiple engines (stable-ts, WhisperX), and API fallback (Groq/OpenAI) |
+| 🔍 Site Scraper     | Admin-only: Scrape video links from any website and batch upload one by one with thumbnails |
 | 🖼️ One-time Thumbnails| Premium-only: Set a custom thumbnail for a single upload via interactive button |
 | 📊 Live Progress | Real-time progress bars in chat |
 | 🚀 Upload Boost | pyroblack `upload_boost=True` + parallel MTProto connections |
@@ -168,12 +169,23 @@ The bot includes optimized prompts for accurate NSFW/adult content transcription
 - Local WhisperX upscaled models for better recognition of diverse vocabulary
 
 --- Admin only ---
-/broadcast <msg> – Broadcast to all users 📢
-/total           – Total registered users 👥
-/ban <id>        – Ban a user ⛔
-/unban <id>      – Unban a user ✅
-/premium <id>    – Toggle premium status ⭐
-/statusall       – CPU / RAM / Disk stats 🚀
+/broadcast <msg>       – Broadcast to all users 📢
+/total                – Total registered users 👥
+/ban <id>             – Ban a user ⛔
+/unban <id>           – Unban a user ✅
+/premium <id>         – Toggle premium status ⭐
+/statusall            – CPU / RAM / Disk stats 🚀
+
+### 🔍 Site Scraper (Admin Only)
+Scrape and batch upload videos from a SPECIFIC category page:
+
+/scrape <url> [max]   – Scrape category page for videos and upload one by one 📥
+/scrape_stop          – Stop the current scrape job ⏹️
+/scrape_status        – Check scrape progress 📊
+
+Example: `/scrape https://pornhub.com/category/amateur 20`
+
+Note: Only scrapes videos from the provided URL - no pagination or other categories.
 ```
 
 ---
@@ -268,6 +280,7 @@ telelinkworking/
 │       ├── upload.py       # Download & upload logic
 │       ├── extractor.py    # Link extraction orchestration
 │       ├── browser_extractor.py  # Playwright-based extraction
+│       ├── site_scraper.py # Site scraping for batch uploads
 │       └── database.py     # MongoDB operations
 └── utils/
     ├── shared.py          # Shared state

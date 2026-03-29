@@ -33,3 +33,5 @@ torchaudio
 torchcodec
 stable-ts
 whisperx
+beautifulsoup4
+lxml
