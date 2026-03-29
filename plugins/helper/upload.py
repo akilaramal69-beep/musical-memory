@@ -1214,6 +1214,7 @@ async def download_ytdlp(
     user_id: int,
     format_id: str = None,
     cancel_ref: list = None,
+    referer: str = None,
 ) -> tuple[str, str]:
     """
     Download content using yt-dlp with live progress.
@@ -1254,19 +1255,29 @@ async def download_ytdlp(
 
         # Update Telegram message
         now = time.time()
-        if d["status"] == "downloading" and now - last_edit[0] >= PROGRESS_UPDATE_DELAY:
+        if now - last_edit[0] >= PROGRESS_UPDATE_DELAY:
             last_edit[0] = now
-            bar = progress_bar(done, total) if total else "░" * 12
-            pct = f"{done / total * 100:.1f}%" if total else "…"
-            text = (
-                f"📥 **Downloading Media…**\n\n"
-                f"📁 **Name:** `{os.path.basename(outtmpl)}`\n"
-                f"[{bar}] {pct}\n"
-                f"**Done:** {humanbytes(done)}"
-                + (f" / {humanbytes(total)}" if total else "")
-                + (f"\n**Speed:** {humanbytes(speed)}/s" if speed else "")
-                + (f"\n**ETA:** {time_formatter(eta)}" if eta else "")
-            )
+            if d["status"] == "downloading":
+                bar = progress_bar(done, total) if total else "░" * 12
+                pct = f"{done / total * 100:.1f}%" if total else "…"
+                text = (
+                    f"📥 **Downloading Media…**\n\n"
+                    f"📁 **Name:** `{os.path.basename(outtmpl)}`\n"
+                    f"[{bar}] {pct}\n"
+                    f"**Done:** {humanbytes(done)}"
+                    + (f" / {humanbytes(total)}" if total else "")
+                    + (f"\n**Speed:** {humanbytes(speed)}/s" if speed else "")
+                    + (f"\n**ETA:** {time_formatter(eta)}" if eta else "")
+                )
+            elif d["status"] == "finished":
+                text = (
+                    f"⚙️ **Processing & Merging…**\n\n"
+                    f"📁 **Name:** `{os.path.basename(outtmpl)}`\n"
+                    "_(please wait, this can take a while for high-quality videos)_"
+                )
+            else:
+                return
+
             asyncio.run_coroutine_threadsafe(
                 _safe_edit(progress_msg, text, reply_markup=cancel_button(user_id)),
                 loop
@@ -1368,6 +1379,9 @@ async def download_ytdlp(
 
     if Config.PROXY:
         ydl_opts["proxy"] = Config.PROXY
+
+    if referer:
+        ydl_opts["referer"] = referer
 
     # Platform specific tweaks
     if "reddit.com" in url or "v.redd.it" in url:
@@ -1821,7 +1835,7 @@ async def _download_hls(url: str, out_path: str, progress_msg, start_time_ref: l
                 pass
 
 
-async def download_url(url: str, filename: str, progress_msg, start_time_ref: list, user_id: int, format_id: str = None, cancel_ref: list = None):
+async def download_url(url: str, filename: str, progress_msg, start_time_ref: list, user_id: int, format_id: str = None, cancel_ref: list = None, referer: str = None):
     """
     Stream-download a URL to disk, editing progress_msg periodically.
     Returns (path, mime_type) on success or raises.
@@ -1853,7 +1867,7 @@ async def download_url(url: str, filename: str, progress_msg, start_time_ref: li
         except Exception:
             pass
         try:
-            res_path, res_mime = await download_ytdlp(url, filename, progress_msg, start_time_ref, user_id, format_id=format_id, cancel_ref=cancel_ref)
+            res_path, res_mime = await download_ytdlp(url, filename, progress_msg, start_time_ref, user_id, format_id=format_id, cancel_ref=cancel_ref, referer=referer)
             
             # Final guard against 0B files leaking to uploader
             if res_path and os.path.exists(res_path) and os.path.getsize(res_path) > 0:
@@ -1881,7 +1895,7 @@ async def download_url(url: str, filename: str, progress_msg, start_time_ref: li
                             Config.LOGGER.info(f"link-api resolved URL (fallback 1): {link_api_url[:80]}...")
                             return await download_url(
                                 link_api_url, filename, progress_msg, start_time_ref, user_id, 
-                                format_id=format_id, cancel_ref=cancel_ref
+                                format_id=format_id, cancel_ref=cancel_ref, referer=referer
                             )
                     except Exception as link_api_err:
                         pass
@@ -1903,14 +1917,14 @@ async def download_url(url: str, filename: str, progress_msg, start_time_ref: li
                         if is_hls_url and YTDLP_AVAILABLE:
                             # For HLS URLs, try yt-dlp directly (ensures fresh URLs)
                             try:
-                                return await download_ytdlp(url, filename, progress_msg, start_time_ref, user_id, format_id=format_id, cancel_ref=cancel_ref)
+                                return await download_ytdlp(url, filename, progress_msg, start_time_ref, user_id, format_id=format_id, cancel_ref=cancel_ref, referer=referer)
                             except Exception:
                                 pass
                         
                         # Otherwise, recurse with the direct URL
                         return await download_url(
                             link_api_url, filename, progress_msg, start_time_ref, user_id, 
-                            format_id=format_id, cancel_ref=cancel_ref
+                            format_id=format_id, cancel_ref=cancel_ref, referer=referer
                         )
                 except Exception:
                     pass
@@ -1943,7 +1957,7 @@ async def download_url(url: str, filename: str, progress_msg, start_time_ref: li
                 if YTDLP_AVAILABLE:
                     Config.LOGGER.info(f"HLS URL detected from extractor, trying yt-dlp directly on original URL: {url[:80]}")
                     try:
-                        return await download_ytdlp(url, filename, progress_msg, start_time_ref, user_id, format_id=format_id, cancel_ref=cancel_ref)
+                        return await download_ytdlp(url, filename, progress_msg, start_time_ref, user_id, format_id=format_id, cancel_ref=cancel_ref, referer=referer)
                     except Exception:
                         pass
                 
@@ -1952,7 +1966,7 @@ async def download_url(url: str, filename: str, progress_msg, start_time_ref: li
                 if YTDLP_AVAILABLE:
                     try:
                         Config.LOGGER.info(f"Attempting direct yt-dlp download of HLS URL")
-                        return await download_ytdlp(link_api_url, filename, progress_msg, start_time_ref, user_id, format_id=None, cancel_ref=cancel_ref)
+                        return await download_ytdlp(link_api_url, filename, progress_msg, start_time_ref, user_id, format_id=None, cancel_ref=cancel_ref, referer=referer)
                     except Exception:
                         pass
             
@@ -1964,7 +1978,7 @@ async def download_url(url: str, filename: str, progress_msg, start_time_ref: li
             # Recurse with the direct URL so it goes through the normal probe path
             return await download_url(
                 link_api_url, filename, progress_msg, start_time_ref, user_id,
-                format_id=format_id, cancel_ref=cancel_ref
+                format_id=format_id, cancel_ref=cancel_ref, referer=referer
             )
     except asyncio.CancelledError:
         raise

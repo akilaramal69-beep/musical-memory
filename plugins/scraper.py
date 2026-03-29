@@ -96,7 +96,7 @@ async def run_scraper(client: Client, status_msg: Message, user_id: int, start_u
                 filename = f"{clean_title}.mp4"
                 
                 file_path, mime = await download_url(
-                    best_link, filename, status_msg, start_time, user_id
+                    best_link, filename, status_msg, start_time, user_id, referer=video_page_url
                 )
                 
                 if not file_path or not os.path.exists(file_path):
