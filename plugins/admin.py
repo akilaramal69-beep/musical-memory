@@ -8,7 +8,7 @@ from plugins.helper.database import (
     is_premium_user, set_premium_user, get_user_stats, add_user
 )
 from plugins.helper.upload import humanbytes
-from plugins.helper.site_scraper import scrape_category_links, get_video_metadata
+from plugins.helper.site_scraper import scrape_category_links
 import psutil
 import os
 
@@ -212,7 +212,13 @@ async def scrape_handler(client: Client, message: Message):
         "active": False
     }
     
-    asyncio.create_task(_scrape_and_upload(client, message.chat.id, user_id, url, max_videos, status_msg))
+    try:
+        task = asyncio.create_task(_scrape_and_upload(client, message.chat.id, user_id, url, max_videos, status_msg))
+        SCRAPE_TASKS[user_id] = task
+    except Exception as e:
+        Config.LOGGER.error(f"Failed to start scrape task: {e}")
+        await status_msg.edit_text(f"❌ Failed to start: {e}")
+        SCRAPE_QUEUE.pop(user_id, None)
 
 
 async def _scrape_and_upload(client: Client, chat_id: int, user_id: int, url: str, max_videos: int, status_msg):
@@ -319,9 +325,12 @@ async def _scrape_and_upload(client: Client, chat_id: int, user_id: int, url: st
         
     except Exception as e:
         Config.LOGGER.error(f"Scrape error: {e}")
+        import traceback
+        Config.LOGGER.error(traceback.format_exc())
         await status_msg.edit_text(f"❌ Error: {e}")
     finally:
         SCRAPE_QUEUE.pop(user_id, None)
+        SCRAPE_TASKS.pop(user_id, None)
 
 
 @Client.on_message(filters.command("scrape_stop") & filters.private)
@@ -333,6 +342,11 @@ async def scrape_stop_handler(client: Client, message: Message):
         return await message.reply_text("❌ No active scraping job.", quote=True)
     
     SCRAPE_QUEUE[user_id]["cancel"] = True
+    
+    task = SCRAPE_TASKS.get(user_id)
+    if task and not task.done():
+        task.cancel()
+    
     await message.reply_text("⏹️ Stopping scrape after current upload…", quote=True)
 
 
