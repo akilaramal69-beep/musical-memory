@@ -1258,8 +1258,19 @@ async def download_ytdlp(
         if now - last_edit[0] >= PROGRESS_UPDATE_DELAY:
             last_edit[0] = now
             if d["status"] == "downloading":
-                bar = progress_bar(done, total) if total else "░" * 12
-                pct = f"{done / total * 100:.1f}%" if total else "…"
+                fragment_index = d.get("fragment_index")
+                fragment_count = d.get("fragment_count")
+                
+                if total:
+                    bar = progress_bar(done, total)
+                    pct = f"{done / total * 100:.1f}%"
+                elif fragment_count:
+                    bar = progress_bar(fragment_index, fragment_count)
+                    pct = f"Frag {fragment_index}/{fragment_count}"
+                else:
+                    bar = "░" * 12
+                    pct = "…"
+
                 text = (
                     f"📥 **Downloading Media…**\n\n"
                     f"📁 **Name:** `{os.path.basename(outtmpl)}`\n"
@@ -1692,7 +1703,7 @@ async def generate_video_thumbnail(file_path: str, chat_id: int, duration: int =
 
 # ── Download helpers ──────────────────────────────────────────────────────────
 
-async def _download_hls(url: str, out_path: str, progress_msg, start_time_ref: list, user_id: int, cancel_ref: list = None, headers: dict = None) -> str:
+async def _download_hls(url: str, out_path: str, progress_msg, start_time_ref: list, user_id: int, cancel_ref: list = None, headers: dict = None, referer: str = None) -> str:
     """
     Use ffmpeg to download an HLS/DASH/TS stream and remux it to mp4.
     Shows elapsed-time progress (no size info available for streams).
@@ -1704,13 +1715,17 @@ async def _download_hls(url: str, out_path: str, progress_msg, start_time_ref: l
     last_size = 0
     last_size_time = time.time()
     
-    # Build FFmpeg headers
     ffmpeg_headers = [
         "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept: */*",
         "Accept-Language: en-US,en;q=0.9",
-        "Referer: https://www.pornhub.com/",
     ]
+    if referer:
+        ffmpeg_headers.append(f"Referer: {referer}")
+    else:
+        # Default fallback for safety (some CDNs require it even if not specific)
+        if "pornhub.com" in url.lower():
+            ffmpeg_headers.append("Referer: https://www.pornhub.com/")
     
     if headers:
         for k, v in headers.items():
@@ -1949,26 +1964,19 @@ async def download_url(url: str, filename: str, progress_msg, start_time_ref: li
             Config.LOGGER.info(f"link-api resolved: {link_api_url[:80]}")
             
             # Check if the resolved URL is an HLS stream
-            is_hls_url = ".m3u8" in link_api_url.lower() or link_api_url.lower().endswith("/m3u8")
+            is_hls_url = ".m3u8" in link_api_url.lower() or "/m3u8" in link_api_url.lower()
             
             if is_hls_url:
-                # For HLS URLs, try yt-dlp directly on the ORIGINAL URL instead
-                # This ensures fresh URL extraction with proper auth tokens
+                # For HLS URLs detected from extractor, we should use the link_api_url directly
+                # but ensure we keep the ORIGINAL page as referer for auth.
                 if YTDLP_AVAILABLE:
-                    Config.LOGGER.info(f"HLS URL detected from extractor, trying yt-dlp directly on original URL: {url[:80]}")
+                    Config.LOGGER.info(f"HLS URL detected from extractor, trying direct yt-dlp download: {link_api_url[:80]}")
                     try:
-                        return await download_ytdlp(url, filename, progress_msg, start_time_ref, user_id, format_id=format_id, cancel_ref=cancel_ref, referer=referer)
-                    except Exception:
-                        pass
+                        return await download_ytdlp(link_api_url, filename, progress_msg, start_time_ref, user_id, format_id=None, cancel_ref=cancel_ref, referer=url)
+                    except Exception as e:
+                        Config.LOGGER.warning(f"Direct yt-dlp download of HLS URL failed: {e}")
                 
-                # If yt-dlp still fails, try direct FFmpeg download with the HLS URL
-                # But first, try to download with yt-dlp using the HLS URL
-                if YTDLP_AVAILABLE:
-                    try:
-                        Config.LOGGER.info(f"Attempting direct yt-dlp download of HLS URL")
-                        return await download_ytdlp(link_api_url, filename, progress_msg, start_time_ref, user_id, format_id=None, cancel_ref=cancel_ref, referer=referer)
-                    except Exception:
-                        pass
+                # If yt-dlp fails, we'll fall through to recursion which will eventually try FFmpeg
             
             # For non-HLS URLs, proceed as before
             await progress_msg.edit_text(
@@ -2038,7 +2046,7 @@ async def download_url(url: str, filename: str, progress_msg, start_time_ref: li
             )
         except Exception:
             pass
-        await _download_hls(url, mp4_path, progress_msg, start_time_ref, user_id, cancel_ref=cancel_ref, headers=headers)
+        await _download_hls(url, mp4_path, progress_msg, start_time_ref, user_id, cancel_ref=cancel_ref, headers=headers, referer=referer)
         return mp4_path, "video/mp4"
 
     # ── Aria2c High Speed Download ──────────────────────────────────────────────
